@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>CEO Dashboard – Team Portal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--tx:#14181f;--mu:#667085;--bd:#e3e7ee;--ac:#2b59ff;--ok:#12805c;--wn:#b54708;--bad:#b42318;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1116;--card:#171b22;--tx:#eef1f6;--mu:#98a2b3;--bd:#2a303b;--ac:#6f8cff;--ok:#3ccf9b;--wn:#f5a35c;--bad:#ff7b72}}
+:root[data-theme="dark"]{--bg:#0e1116;--card:#171b22;--tx:#eef1f6;--mu:#98a2b3;--bd:#2a303b;--ac:#6f8cff;--ok:#3ccf9b;--wn:#f5a35c;--bad:#ff7b72}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+h1,h2,h3{margin:0 0 8px}h2{font-size:17px}h3{font-size:15px}
+input,select,textarea,button{font:inherit;color:var(--tx)}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);margin:4px 0 10px}
+button{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600}
+button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}button.ok{background:var(--ok)}button.bad{background:var(--bad)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.stat b{display:block;font-size:24px}.mu{color:var(--mu);font-size:13px}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid var(--bd)}
+.assigned{color:var(--wn)}.submitted{color:var(--ac)}.approved{color:var(--ok)}.rework{color:var(--bad)}
+.row{padding:10px 0;border-top:1px solid var(--bd)}.row:first-child{border-top:0}
+.login{max-width:380px;margin:8vh auto}
+#toast{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));right:12px;left:12px;max-width:380px;margin-left:auto;background:var(--ac);color:#fff;padding:12px 14px;border-radius:10px;display:none;z-index:9;box-shadow:0 6px 24px #0004}
+.err{color:var(--bad);min-height:20px}.scroll{overflow-x:auto}
+</style></head><body><div id="splash" style="display:flex;pointer-events:none;position:fixed;inset:0;z-index:99999;background:#0a0a0a;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;transition:opacity .25s ease;font-family:Georgia,'Times New Roman',serif"><div style="font-size:clamp(48px,15vw,110px);letter-spacing:.18em;padding-left:.18em;font-weight:900;background:linear-gradient(180deg,#F7E7A1 0%,#D4AF37 45%,#8C6D1F 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,175,55,.25)" id="spn">SAJJAD</div></div><script>setTimeout(function(){var s=document.getElementById('splash');if(s){s.style.opacity='0';setTimeout(function(){s.remove()},300)}},1500)</script><div class="wrap" id="app"></div><div id="toast"></div>
+<script>
+const USERS={SAS101:{n:"Zaki",p:"78678",r:"employee",t:"Software Engineer",d:"Engineering"},CEO001:{n:"Sajjad",p:"101918",r:"ceo",t:"Chief Executive Officer",d:"Executive"}};
+const seen=new Set();let syncOk=true,me=null,tasks=[],events=[],since=0,unsubs=[],db=null,loginAt=null,tick=null,welcomed=0,unread=0;const R={employee:1,manager:2,ceo:3};
+// who may see an event: targeted events go to the named people; logins/logouts only go to people ranked above the actor
+const vis=e=>e.to?e.to.includes(me.n):(e.type=="login"||e.type=="logout")?R[e.role]<R[me.r]:me.r!="employee";
+function brand(a,z){return '<div style="text-align:'+a+';font-family:Georgia,Times New Roman,serif;margin-bottom:6px"><div style="font-size:'+z+'px;line-height:1.1;font-weight:900;letter-spacing:.18em;background:linear-gradient(180deg,#F7E7A1,#D4AF37 45%,#8C6D1F);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">SAJJAD</div><div style="color:#D4AF37;letter-spacing:.3em;font-size:11px;margin-top:4px">ZOFREX WORK CENTRE</div></div>'}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){unread=0;document.title="CEO Dashboard – Team Portal"}});
+function showSplash(n){const s=document.querySelector("#splash");document.querySelector("#spn").textContent="SAJJAD";s.style.display="flex";s.style.opacity="1";s.style.pointerEvents="none";setTimeout(()=>{s.style.opacity="0";setTimeout(()=>s.style.display="none",250)},600)}
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=t=>new Date(t).toLocaleString([],{dateStyle:"medium",timeStyle:"short"});
+// storage layer: shared db when available, otherwise in-browser demo mode
+const L={tasks:[],events:[],ls:{tasks:[],events:[]}};
+try{L.tasks=JSON.parse(localStorage.getItem("zwc_tasks")||"[]");L.events=JSON.parse(localStorage.getItem("zwc_events")||"[]")}catch(e){}
+const sv=()=>{try{localStorage.setItem("zwc_tasks",JSON.stringify(L.tasks));localStorage.setItem("zwc_events",JSON.stringify(L.events))}catch(e){}};
+const store={
+ async add(c,d){d.ts=Date.now();if(db){try{await db.collection(c).add(d);return}catch(e){syncOk=false;toast("⚠️ Not syncing: this stays on your device only")}}d.id=Math.random().toString(36).slice(2);L[c].push(d);sv();L.ls[c].forEach(f=>f())},
+ async upd(c,id,d){if(db){try{await db.collection(c).doc(id).update(d);return}catch(e){syncOk=false;toast("⚠️ Not syncing: this stays on your device only")}}Object.assign(L[c].find(x=>x.id==id),d);sv();L.ls[c].forEach(f=>f())},
+ watch(c,cb){if(db){try{return db.collection(c).orderBy("ts","desc").limit(200).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))))}catch(e){}}
+  const f=()=>cb([...L[c]].sort((a,b)=>b.ts-a.ts));L.ls[c].push(f);f();return()=>{}}};
+function toast(m){try{if(document.hidden){unread++;document.title="("+unread+") New alert";if(window.Notification&&Notification.permission=="granted")new Notification("Zofrex Work Centre",{body:m.replace("🔔 ","")})}}catch(e){}const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",6000)}
+function login(){const id=$("#id").value.trim().toUpperCase(),u=USERS[id];
+ if(!u||u.p!==$("#pw").value.trim()){$("#err").textContent="Invalid employee ID or password.";return}
+ if(document.activeElement)document.activeElement.blur();me={id,...u};loginAt=Date.now();since=Date.now();
+ welcomed=0;try{if(window.Notification&&Notification.permission=="default")Notification.requestPermission()}catch(e){}store.add("events",{type:"login",who:me.n,wid:id,role:me.r,text:me.n+" ("+id+") logged in"});
+ unsubs=[store.watch("tasks",d=>{tasks=d;if(!welcomed&&me&&me.r=="employee"){welcomed=1;const n=d.filter(t=>t.assignee==me.n&&(t.status=="assigned"||t.status=="rework")).length;if(n)setTimeout(()=>toast("🔔 You have "+n+" open task"+(n>1?"s":"")),900)}render()}),store.watch("events",d=>{
+  if(me){d=d.filter(vis);d.filter(e=>e.ts>since&&e.who!=me.n&&!seen.has(e.id)).forEach(e=>{seen.add(e.id);toast("🔔 "+e.text)})}events=d;render()})];
+ render()}
+function logout(){const m=Math.round((Date.now()-loginAt)/60000);
+ store.add("events",{type:"logout",who:me.n,wid:me.id,role:me.r,text:me.n+" ("+me.id+") logged out after "+m+" min"});
+ unsubs.forEach(u=>u&&u());me=null;if(document.activeElement)document.activeElement.blur();clearInterval(tick);render()}
+function shell(inner){return `<div class="top"><div><h1 style="font-size:20px">Team Portal</h1><span class="mu">${esc(me.n)} · ${esc(me.t)} · ${esc(me.id)}</span></div><div><span class="tag">${db&&syncOk?"🟢 Live sync":"🔴 Not shared"}</span> <span class="mu" id="clk"></span> <button class="g" onclick="logout()">Log out</button></div></div>`+inner}
+function taskRow(t,act){return `<div class="row"><b>${esc(t.title)}</b> <span class="tag ${t.status}">${t.status}</span><div class="mu">${esc(t.assignee)} · due ${esc(t.due||"n/a")} · priority ${esc(t.pri||"normal")}</div>${t.sub?`<div style="margin-top:6px"><span class="mu">Submitted ${fmt(t.subTs)}:</span> ${esc(t.sub)}</div>`:""}${t.fb?`<div class="mu">Feedback: ${esc(t.fb)}</div>`:""}${act||""}</div>`}
+function evRows(n){return events.slice(0,n).map(e=>`<div class="row"><span class="tag">${e.type}</span> ${esc(e.text)}<div class="mu">${fmt(e.ts)}</div></div>`).join("")||'<div class="mu">No activity yet.</div>'}
+function render(){const a=$("#app");
+ if(!me){a.innerHTML=`<div class="card login">${brand("center",44)}<h1 style="text-align:center;font-size:22px">Team Portal</h1><p class="mu" style="text-align:center">Sign in with your employee ID.</p><label>Employee ID<input id="id" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. SAS101"></label><label>Password<input id="pw" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key=='Enter')login()"></label><div class="err" id="err"></div><button onclick="login()" style="width:100%">Sign in</button></div>`;return}
+ if(document.activeElement&&["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName)&&$("#app").contains(document.activeElement))return;
+ let h="";
+ if(me.r=="employee"){const mine=tasks.filter(t=>t.assignee==me.n),open=mine.filter(t=>t.status=="assigned"||t.status=="rework");
+  h=shell(`<div class="grid"><div class="card stat"><span class="mu">Open tasks</span><b>${open.length}</b></div><div class="card stat"><span class="mu">Awaiting review</span><b>${mine.filter(t=>t.status=="submitted").length}</b></div><div class="card stat"><span class="mu">Approved</span><b>${mine.filter(t=>t.status=="approved").length}</b></div><div class="card stat"><span class="mu">Leave balance</span><b>18 days</b></div></div>
+  <div class="card"><h2>My work schedule</h2>${mine.map(t=>taskRow(t,(t.status=="assigned"||t.status=="rework")?`<textarea id="s_${t.id}" rows="2" placeholder="Describe what you completed, add links"></textarea><button class="ok" onclick="submitWork('${t.id}')">Submit to CEO</button>`:"")).join("")||'<div class="mu">No tasks assigned yet.</div>'}</div>
+  <div class="card"><h2>Notifications</h2>${evRows(10)}</div>
+  <div class="card"><h2>Request leave</h2><select id="lt"><option>Annual leave</option><option>Sick leave</option><option>Work from home</option></select><input id="ld" type="date"><input id="lr" placeholder="Reason"><button onclick="leave()">Send request</button></div>
+  <div class="grid"><div class="card"><h2>Announcements</h2><div class="row">Quarterly all-hands this Friday, 4 PM.</div><div class="row">Security training due by month end.</div></div><div class="card"><h2>Policies</h2><div class="row">Working hours 9:00–18:00</div><div class="row">Remote work: up to 2 days/week</div><div class="row">Expense claims within 30 days</div></div></div>`)}
+ if(me.r=="manager"){h=shell(`<div class="card"><h2>Assign work</h2><input id="nt" placeholder="Task title"><div class="grid"><div><select id="na"><option>Zaki</option></select></div><div><input id="nd" type="date"></div><div><select id="np"><option>normal</option><option>high</option><option>low</option></select></div></div><button onclick="assign()">Assign task</button></div>
+  <div class="card"><h2>Team tasks</h2>${tasks.map(t=>taskRow(t)).join("")||'<div class="mu">Nothing assigned yet.</div>'}</div><div class="card"><h2>Team activity</h2>${evRows(15)}</div>`)}
+ if(me.r=="ceo"){const sub=tasks.filter(t=>t.status=="submitted");
+  h=shell(`<div class="grid"><div class="card stat"><span class="mu">Awaiting your review</span><b>${sub.length}</b></div><div class="card stat"><span class="mu">Total tasks</span><b>${tasks.length}</b></div><div class="card stat"><span class="mu">Approved</span><b>${tasks.filter(t=>t.status=="approved").length}</b></div></div>
+  <div class="card"><h2>Assign work</h2><input id="nt" placeholder="Task title"><div class="grid"><div><select id="na"><option>Zaki</option></select></div><div><input id="nd" type="date"></div><div><select id="np"><option>normal</option><option>high</option><option>low</option></select></div></div><button onclick="assign()">Assign task</button></div>
+  <div class="card"><h2>Submitted work</h2>${sub.map(t=>taskRow(t,`<input id="f_${t.id}" placeholder="Feedback (optional)"><button class="ok" onclick="review('${t.id}','approved')">Approve</button> <button class="bad" onclick="review('${t.id}','rework')">Request rework</button>`)).join("")||'<div class="mu">No submissions waiting.</div>'}</div>
+  <div class="card"><h2>Live activity: logins, logouts, requests</h2>${evRows(25)}</div><div class="card"><h2>All tasks</h2>${tasks.map(t=>taskRow(t)).join("")||'<div class="mu">None.</div>'}</div>`)}
+ a.innerHTML=h;clearInterval(tick);const c=()=>{const e=$("#clk");if(e)e.textContent="Session "+Math.floor((Date.now()-loginAt)/60000)+" min"};c();tick=setInterval(c,30000)}
+function submitWork(id){const v=$("#s_"+id).value.trim();if(!v){toast("Please describe your work first.");return}
+ const t=tasks.find(x=>x.id==id);store.upd("tasks",id,{status:"submitted",sub:v,subTs:Date.now(),fb:""});
+ store.add("events",{type:"submission",to:["Sajjad",t.by].filter(Boolean),who:me.n,wid:me.id,text:me.n+" submitted “"+t.title+"” for review"});toast("Submitted to the CEO.")}
+function leave(){const d=$("#ld").value;if(!d){toast("Pick a date.");return}
+ store.add("events",{type:"leave",to:["Zofrex","Sajjad"],who:me.n,wid:me.id,text:me.n+" requested "+$("#lt").value+" on "+d+($("#lr").value?" – "+esc($("#lr").value):"")});toast("Leave request sent.")}
+function assign(){const t=$("#nt").value.trim();if(!t)return;
+ store.add("tasks",{title:t,assignee:$("#na").value,due:$("#nd").value,pri:$("#np").value,status:"assigned",by:me.n});
+ store.add("events",{type:"assigned",to:[$("#na").value,"Sajjad","Zofrex"],who:me.n,wid:me.id,text:me.n+" assigned “"+t+"” to "+$("#na").value});$("#nt").value=""}
+function review(id,s){const f=$("#f_"+id).value.trim();const t=tasks.find(x=>x.id==id)||{};store.upd("tasks",id,{status:s,fb:f});
+ store.add("events",{type:s,to:[t.assignee,t.by].filter(Boolean),who:me.n,wid:me.id,text:me.n+" marked “"+(t.title||"a task")+"” as "+(s=="rework"?"needs rework":"approved")})}
+(async()=>{try{const c=await claude.use("db");if(c)db=c}catch(e){}render()})();
+render();
+</script></body></html>
