@@ -38,23 +38,36 @@ const fmt=t=>new Date(t).toLocaleString([],{dateStyle:"medium",timeStyle:"short"
 const L={tasks:[],events:[],ls:{tasks:[],events:[]}};
 try{L.tasks=JSON.parse(localStorage.getItem("zwc_tasks")||"[]");L.events=JSON.parse(localStorage.getItem("zwc_events")||"[]")}catch(e){}
 const sv=()=>{try{localStorage.setItem("zwc_tasks",JSON.stringify(L.tasks));localStorage.setItem("zwc_events",JSON.stringify(L.events))}catch(e){}};
+const remote=true,BURL="https://blob.fyi/blob/zofrex-ce56988f9f0e";
+const fire=()=>["tasks","events"].forEach(c=>L.ls[c].forEach(f=>f()));
+const pull=async()=>{const r=await fetch(BURL);if(r.status==404)return{tasks:[],events:[]};if(!r.ok)throw 0;return JSON.parse(await r.text())};
+const merge=(c,a)=>{const m=new Map(L[c].map(x=>[x.id,x]));(a||[]).forEach(x=>{const o=m.get(x.id);if(!o||(x.u||x.ts)>(o.u||o.ts))m.set(x.id,x)});L[c]=[...m.values()].sort((a,b)=>b.ts-a.ts).slice(0,300)};
+let q=Promise.resolve();
+const syncNow=(write)=>q=q.then(async()=>{try{const b=JSON.stringify([L.tasks,L.events]),r=await pull();merge("tasks",r.tasks);merge("events",r.events);const ch=JSON.stringify([L.tasks,L.events])!==b;
+ if(write){const p=await fetch(BURL,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({tasks:L.tasks,events:L.events})});if(!p.ok)throw 0}
+ syncOk=true;if(ch||write){sv();fire()}}catch(e){if(syncOk)toast("⚠️ Not syncing: check internet");syncOk=false}});
 const store={
- async add(c,d){d.ts=Date.now();if(db){try{await db.collection(c).add(d);return}catch(e){syncOk=false;toast("⚠️ Not syncing: this stays on your device only")}}d.id=Math.random().toString(36).slice(2);L[c].push(d);sv();L.ls[c].forEach(f=>f())},
- async upd(c,id,d){if(db){try{await db.collection(c).doc(id).update(d);return}catch(e){syncOk=false;toast("⚠️ Not syncing: this stays on your device only")}}Object.assign(L[c].find(x=>x.id==id),d);sv();L.ls[c].forEach(f=>f())},
+ async add(c,d){d.ts=Date.now();if(db){try{await db.collection(c).add(d);return}catch(e){syncOk=false;toast("⚠️ Not syncing: this stays on your device only")}}d.id=Math.random().toString(36).slice(2);L[c].push(d);sv();fire();if(remote)syncNow(1)},
+ async upd(c,id,d){if(db){try{await db.collection(c).doc(id).update(d);return}catch(e){syncOk=false;toast("⚠️ Not syncing: this stays on your device only")}}Object.assign(L[c].find(x=>x.id==id),d,{u:Date.now()});sv();fire();if(remote)syncNow(1)},
  watch(c,cb){if(db){try{return db.collection(c).orderBy("ts","desc").limit(200).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))))}catch(e){}}
   const f=()=>cb([...L[c]].sort((a,b)=>b.ts-a.ts));L.ls[c].push(f);f();return()=>{}}};
-function toast(m){try{if(document.hidden){unread++;document.title="("+unread+") New alert";if(window.Notification&&Notification.permission=="granted")new Notification("Zofrex Work Centre",{body:m.replace("🔔 ","")})}}catch(e){}const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",6000)}
-function login(){const id=$("#id").value.trim().toUpperCase(),u=USERS[id];
- if(!u||u.p!==$("#pw").value.trim()){$("#err").textContent="Invalid employee ID or password.";return}
- if(document.activeElement)document.activeElement.blur();me={id,...u};loginAt=Date.now();since=Date.now();
- welcomed=0;try{if(window.Notification&&Notification.permission=="default")Notification.requestPermission()}catch(e){}store.add("events",{type:"login",who:me.n,wid:id,role:me.r,text:me.n+" ("+id+") logged in"});
+let AC=null;const unlock=()=>{try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state=="suspended")AC.resume()}catch(e){}};
+["pointerdown","keydown","touchstart"].forEach(e=>addEventListener(e,unlock,{passive:true}));
+function ring(){try{if(!AC||AC.state!="running")return;const t0=AC.currentTime;[0,.35,.7].forEach(d=>{const o=AC.createOscillator(),g=AC.createGain();o.type="sine";o.frequency.value=d==.7?1100:880;g.gain.setValueAtTime(.0001,t0+d);g.gain.exponentialRampToValueAtTime(.4,t0+d+.03);g.gain.exponentialRampToValueAtTime(.0001,t0+d+.3);o.connect(g);g.connect(AC.destination);o.start(t0+d);o.stop(t0+d+.32)})}catch(e){}}
+function toast(m){if(String(m).startsWith("🔔"))ring();try{if(document.hidden){unread++;document.title="("+unread+") New alert";if(window.Notification&&Notification.permission=="granted")new Notification("Zofrex Work Centre",{body:m.replace("🔔 ","")})}}catch(e){}try{navigator.vibrate&&navigator.vibrate(200)}catch(e){}const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",6000)}
+function saveSess(){try{if(me)localStorage.setItem("zof_sess",JSON.stringify({id:me.id,at:loginAt,seen:Date.now()}))}catch(e){}}
+setInterval(saveSess,10000);addEventListener("pagehide",saveSess);document.addEventListener("visibilitychange",saveSess);
+function login(S){const R_=S&&S.id,id=R_?S.id:$("#id").value.trim().toUpperCase(),u=USERS[id];
+ if(!u||(!R_&&u.p!==$("#pw").value.trim())){$("#err").textContent="Invalid employee ID or password.";return}
+ if(document.activeElement)document.activeElement.blur();me={id,...u};loginAt=R_?S.at:Date.now();since=R_?(S.seen||Date.now()):Date.now();saveSess();
+ welcomed=0;try{if(window.Notification&&Notification.permission=="default")Notification.requestPermission()}catch(e){}if(!R_)store.add("events",{type:"login",who:me.n,wid:id,role:me.r,text:me.n+" ("+id+") logged in"});
  unsubs=[store.watch("tasks",d=>{tasks=d;if(!welcomed&&me&&me.r=="employee"){welcomed=1;const n=d.filter(t=>t.assignee==me.n&&(t.status=="assigned"||t.status=="rework")).length;if(n)setTimeout(()=>toast("🔔 You have "+n+" open task"+(n>1?"s":"")),900)}render()}),store.watch("events",d=>{
   if(me){d=d.filter(vis);d.filter(e=>e.ts>since&&e.who!=me.n&&!seen.has(e.id)).forEach(e=>{seen.add(e.id);toast("🔔 "+e.text)})}events=d;render()})];
  render()}
-function logout(){const m=Math.round((Date.now()-loginAt)/60000);
+function logout(){try{localStorage.removeItem("zof_sess")}catch(e){}const m=Math.round((Date.now()-loginAt)/60000);
  store.add("events",{type:"logout",who:me.n,wid:me.id,role:me.r,text:me.n+" ("+me.id+") logged out after "+m+" min"});
  unsubs.forEach(u=>u&&u());me=null;if(document.activeElement)document.activeElement.blur();clearInterval(tick);render()}
-function shell(inner){return `<div class="top"><div><h1 style="font-size:20px">Team Portal</h1><span class="mu">${esc(me.n)} · ${esc(me.t)} · ${esc(me.id)}</span></div><div><span class="tag">${db&&syncOk?"🟢 Live sync":"🔴 Not shared"}</span> <span class="mu" id="clk"></span> <button class="g" onclick="logout()">Log out</button></div></div>`+inner}
+function shell(inner){return `<div class="top"><div><h1 style="font-size:20px">Team Portal</h1><span class="mu">${esc(me.n)} · ${esc(me.t)} · ${esc(me.id)}</span></div><div><span class="tag">${(db||remote)&&syncOk?"🟢 Live sync":"🔴 Not shared"}</span> <span class="mu" id="clk"></span> <button class="g" onclick="logout()">Log out</button></div></div>`+inner}
 function taskRow(t,act){return `<div class="row"><b>${esc(t.title)}</b> <span class="tag ${t.status}">${t.status}</span><div class="mu">${esc(t.assignee)} · due ${esc(t.due||"n/a")} · priority ${esc(t.pri||"normal")}</div>${t.sub?`<div style="margin-top:6px"><span class="mu">Submitted ${fmt(t.subTs)}:</span> ${esc(t.sub)}</div>`:""}${t.fb?`<div class="mu">Feedback: ${esc(t.fb)}</div>`:""}${act||""}</div>`}
 function evRows(n){return events.slice(0,n).map(e=>`<div class="row"><span class="tag">${e.type}</span> ${esc(e.text)}<div class="mu">${fmt(e.ts)}</div></div>`).join("")||'<div class="mu">No activity yet.</div>'}
 function render(){const a=$("#app");
@@ -85,6 +98,6 @@ function assign(){const t=$("#nt").value.trim();if(!t)return;
  store.add("events",{type:"assigned",to:[$("#na").value,"Sajjad","Zofrex"],who:me.n,wid:me.id,text:me.n+" assigned “"+t+"” to "+$("#na").value});$("#nt").value=""}
 function review(id,s){const f=$("#f_"+id).value.trim();const t=tasks.find(x=>x.id==id)||{};store.upd("tasks",id,{status:s,fb:f});
  store.add("events",{type:s,to:[t.assignee,t.by].filter(Boolean),who:me.n,wid:me.id,text:me.n+" marked “"+(t.title||"a task")+"” as "+(s=="rework"?"needs rework":"approved")})}
-(async()=>{try{const c=await claude.use("db");if(c)db=c}catch(e){}render()})();
+(async()=>{try{if(remote){await syncNow()}else if(window.claude){const c=await claude.use("db");if(c)db=c}}catch(e){}try{const S=JSON.parse(localStorage.getItem("zof_sess")||"null");if(S&&S.id&&USERS[S.id])login(S)}catch(e){}render();if(remote)setInterval(syncNow,4000)})();
 render();
 </script></body></html>
